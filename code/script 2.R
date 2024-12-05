@@ -65,9 +65,200 @@ load(file = "~/Documents/GitHub/Ergm_manuscript/data/raw_data/pre_breeding_2023.
 load(file = "~/Documents/GitHub/Ergm_manuscript/data/raw_data/breeding_2024.Rda")
 load(file = "~/Documents/GitHub/Ergm_manuscript/data/raw_data/post_breeding_2024.Rda")
 
-# Cut the data into the various intervals
+# Apply the function to each season individually
 data_cut_pre_breeding_2020 <- purrr::map(timewindows, ~{
-  pre_breeding_2020 %>%mutate(int = cutdates(dateOnly, .x))})
+  pre_breeding_2020 %>%
+    mutate(int = cutdates(dateOnly, .x))
+})
+
+data_cut_breeding_2021 <- purrr::map(timewindows, ~{
+  breeding_2021 %>%
+    mutate(int = cutdates(dateOnly, .x))
+})
+
+data_cut_post_breeding_2021 <- purrr::map(timewindows, ~{
+  post_breeding_2021 %>%
+    mutate(int = cutdates(dateOnly, .x))
+})
+
+data_cut_pre_breeding_2021 <- purrr::map(timewindows, ~{
+  pre_breeding_2021 %>%
+    mutate(int = cutdates(dateOnly, .x))
+})
+
+data_cut_breeding_2022 <- purrr::map(timewindows, ~{
+  breeding_2022 %>%
+    mutate(int = cutdates(dateOnly, .x))
+})
+
+data_cut_post_breeding_2022 <- purrr::map(timewindows, ~{
+  post_breeding_2022 %>%
+    mutate(int = cutdates(dateOnly, .x))
+})
+
+data_cut_pre_breeding_2022 <- purrr::map(timewindows, ~{
+  pre_breeding_2022 %>%
+    mutate(int = cutdates(dateOnly, .x))
+})
+
+data_cut_breeding_2023 <- purrr::map(timewindows, ~{
+  breeding_2023 %>%
+    mutate(int = cutdates(dateOnly, .x))
+})
+
+data_cut_post_breeding_2023 <- purrr::map(timewindows, ~{
+  post_breeding_2023 %>%
+    mutate(int = cutdates(dateOnly, .x))
+})
+
+data_cut_pre_breeding_2023 <- purrr::map(timewindows, ~{
+  pre_breeding_2023 %>%
+    mutate(int = cutdates(dateOnly, .x))
+})
+
+data_cut_breeding_2024 <- purrr::map(timewindows, ~{
+  breeding_2024 %>%
+    mutate(int = cutdates(dateOnly, .x))
+})
+
+data_cut_post_breeding_2024 <- purrr::map(timewindows, ~{
+  post_breeding_2024 %>%
+    mutate(int = cutdates(dateOnly, .x))
+})
+
+# Okay, now we have the data classified into intervals, time to split each one into a list.
+# There is an annoying thing here: when you have an sf object and you run group_by() %>% group_split() on it, the resulting sub-objects do not keep their sf status. They turn into regular data frames. Grrrrr! So I had to add a step to turn each of them back into an sf object.
+
+# Pre-breeding 2020
+dataCut_pre_breeding_2020 <- purrr::map(data_cut_pre_breeding_2020, ~.x %>%
+                                           group_by(int) %>%
+                                           group_split() %>%
+                                           purrr::map(., ~sf::st_as_sf(.x, coords = c("location_long", "location_lat"),
+                                                                       crs = "WGS84", remove = FALSE)))
+
+# Breeding 2021
+dataCut_breeding_2021 <- purrr::map(data_cut_breeding_2021, ~.x %>%
+                                       group_by(int) %>%
+                                       group_split() %>%
+                                       purrr::map(., ~sf::st_as_sf(.x, coords = c("location_long", "location_lat"),
+                                                                   crs = "WGS84", remove = FALSE)))
+
+# Post-breeding 2021
+dataCut_post_breeding_2021 <- purrr::map(data_cut_post_breeding_2021, ~.x %>%
+                                            group_by(int) %>%
+                                            group_split() %>%
+                                            purrr::map(., ~sf::st_as_sf(.x, coords = c("location_long", "location_lat"),
+                                                                        crs = "WGS84", remove = FALSE)))
+
+# Pre-breeding 2021
+dataCut_pre_breeding_2021 <- purrr::map(data_cut_pre_breeding_2021, ~.x %>%
+                                           group_by(int) %>%
+                                           group_split() %>%
+                                           purrr::map(., ~sf::st_as_sf(.x, coords = c("location_long", "location_lat"),
+                                                                       crs = "WGS84", remove = FALSE)))
+
+# Breeding 2022
+dataCut_breeding_2022 <- purrr::map(data_cut_breeding_2022, ~.x %>%
+                                       group_by(int) %>%
+                                       group_split() %>%
+                                       purrr::map(., ~sf::st_as_sf(.x, coords = c("location_long", "location_lat"),
+                                                                   crs = "WGS84", remove = FALSE)))
+
+# Post-breeding 2022
+dataCut_post_breeding_2022 <- purrr::map(data_cut_post_breeding_2022, ~.x %>%
+                                            group_by(int) %>%
+                                            group_split() %>%
+                                            purrr::map(., ~sf::st_as_sf(.x, coords = c("location_long", "location_lat"),
+                                                                        crs = "WGS84", remove = FALSE)))
+
+# Pre-breeding 2022
+dataCut_pre_breeding_2022 <- purrr::map(data_cut_pre_breeding_2022, ~.x %>%
+                                           group_by(int) %>%
+                                           group_split() %>%
+                                           purrr::map(., ~sf::st_as_sf(.x, coords = c("location_long", "location_lat"),
+                                                                       crs = "WGS84", remove = FALSE)))
+
+# Breeding 2023
+dataCut_breeding_2023 <- purrr::map(data_cut_breeding_2023, ~.x %>%
+                                       group_by(int) %>%
+                                       group_split() %>%
+                                       purrr::map(., ~sf::st_as_sf(.x, coords = c("location_long", "location_lat"),
+                                                                   crs = "WGS84", remove = FALSE)))
+
+# Post-breeding 2023
+dataCut_post_breeding_2023 <- purrr::map(data_cut_post_breeding_2023, ~.x %>%
+                                            group_by(int) %>%
+                                            group_split() %>%
+                                            purrr::map(., ~sf::st_as_sf(.x, coords = c("location_long", "location_lat"),
+                                                                        crs = "WGS84", remove = FALSE)))
+
+# Pre-breeding 2023
+dataCut_pre_breeding_2023 <- purrr::map(data_cut_pre_breeding_2023, ~.x %>%
+                                           group_by(int) %>%
+                                           group_split() %>%
+                                           purrr::map(., ~sf::st_as_sf(.x, coords = c("location_long", "location_lat"),
+                                                                       crs = "WGS84", remove = FALSE)))
+
+# Breeding 2024
+dataCut_breeding_2024 <- purrr::map(data_cut_breeding_2024, ~.x %>%
+                                       group_by(int) %>%
+                                       group_split() %>%
+                                       purrr::map(., ~sf::st_as_sf(.x, coords = c("location_long", "location_lat"),
+                                                                   crs = "WGS84", remove = FALSE)))
+
+# Post-breeding 2024
+dataCut_post_breeding_2024 <- purrr::map(data_cut_post_breeding_2024, ~.x %>%
+                                            group_by(int) %>%
+                                            group_split() %>%
+                                            purrr::map(., ~sf::st_as_sf(.x, coords = c("location_long", "location_lat"),
+                                                                        crs = "WGS84", remove = FALSE)))
+
+# Process and save each season
+purrr::map_dbl(dataCut_pre_breeding_2020, length) # each element has a different number of elements--122 for the 1-day intervals, 25 for the 5-day intervals, etc. etc.
+save(dataCut_pre_breeding_2020, file = here("~/Documents/GitHub/Ergm_manuscript/data/raw_data/dataCut_pre_breeding_2020.Rda"))
+
+purrr::map_dbl(dataCut_breeding_2021, length)
+save(dataCut_breeding_2021, file = here("~/Documents/GitHub/Ergm_manuscript/data/raw_data/dataCut_breeding_2021.Rda"))
+
+purrr::map_dbl(dataCut_post_breeding_2021, length)
+save(dataCut_post_breeding_2021, file = here("~/Documents/GitHub/Ergm_manuscript/data/raw_data/dataCut_post_breeding_2021.Rda"))
+
+purrr::map_dbl(dataCut_pre_breeding_2021, length)
+save(dataCut_pre_breeding_2021, file = here("~/Documents/GitHub/Ergm_manuscript/data/raw_data/dataCut_pre_breeding_2021.Rda"))
+
+purrr::map_dbl(dataCut_breeding_2022, length)
+save(dataCut_breeding_2022, file = here("~/Documents/GitHub/Ergm_manuscript/data/raw_data/dataCut_breeding_2022.Rda"))
+
+purrr::map_dbl(dataCut_post_breeding_2022, length)
+save(dataCut_post_breeding_2022, file = here("~/Documents/GitHub/Ergm_manuscript/data/raw_data/dataCut_post_breeding_2022.Rda"))
+
+purrr::map_dbl(dataCut_pre_breeding_2022, length)
+save(dataCut_pre_breeding_2022, file = here("~/Documents/GitHub/Ergm_manuscript/data/raw_data/dataCut_pre_breeding_2022.Rda"))
+
+purrr::map_dbl(dataCut_breeding_2023, length)
+save(dataCut_breeding_2023, file = here("~/Documents/GitHub/Ergm_manuscript/data/raw_data/dataCut_breeding_2023.Rda"))
+
+purrr::map_dbl(dataCut_post_breeding_2023, length)
+save(dataCut_post_breeding_2023, file = here("~/Documents/GitHub/Ergm_manuscript/data/raw_data/dataCut_post_breeding_2023.Rda"))
+
+purrr::map_dbl(dataCut_pre_breeding_2023, length)
+save(dataCut_pre_breeding_2023, file = here("~/Documents/GitHub/Ergm_manuscript/data/raw_data/dataCut_pre_breeding_2023.Rda"))
+
+purrr::map_dbl(dataCut_breeding_2024, length)
+save(dataCut_breeding_2024, file = here("~/Documents/GitHub/Ergm_manuscript/data/raw_data/dataCut_breeding_2024.Rda"))
+
+purrr::map_dbl(dataCut_post_breeding_2024, length)
+save(dataCut_post_breeding_2024, file = here("~/Documents/GitHub/Ergm_manuscript/data/raw_data/dataCut_post_breeding_2024.Rda"))
+
+
+
+
+
+
+
+
+
+
 
 
 

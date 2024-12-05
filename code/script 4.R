@@ -48,20 +48,15 @@ gc()
 memory.size()  # Check current memory usage
 memory.limit() # Check the memory limit
 
-library(ggplot2)
-library(mapview)
-library(tidyverse) # for data wrangling
-library(sf) # for spatial manipulation (necessary as a precursor to getting edgelists)
-library(igraph) # for working with networks
-library(tidygraph) # for working with networks
-library(future) # for parallel processing
-library(furrr) # for parallel processing
-library(here) # for tidy file paths
-library(purrr) # Provides functions for functional programming.
-library(readxl) # for read xlsx file
 library(dplyr)
-library(sp)
-library(knitr)
+library(ggplot2)
+library(readxl)
+library(sf)
+library(mapview)
+library(tidyverse)
+library(here)
+library(geosphere)
+library(purrr)
 
 # List of required packages
 packages <- c("spatsoc", "renv", "here", "move", "checkmate", "dplyr", 
@@ -260,7 +255,7 @@ file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data
 # Save the data as an .Rda file
 #save(movebank_raw_data_2020_2024, file = file_path)
 
-load(file_path)
+#load(file_path)
 
 # Step 4. Fix Vulture Names in Who's Who and Movebank Data-----------------------------------------------------------------
 
@@ -361,8 +356,9 @@ file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data
 #save(movebank_raw_data_1, file = file_path)
 
 #load the data if needed
-load(file_path)
+#load(file_path)
 
+# Step 5. Remove Invalid Periods-----------------------------------------------------------------
 
 #' Remove Invalid Periods---------------------------------------------------------------
 #'
@@ -401,27 +397,27 @@ removeInvalidPeriods <- function(dataset, periodsToRemove){
   removed_periods
 }
 
-
-
 #data frame of vulture names and information about each vulture. IMPORTANT: read in with readxl::read_excel("/pathtowhoswho", sheet = "periods_to_remove")
 periods_to_remove <- read_excel("~/Documents/GitHub/Ergm_manuscript/data/raw_data/whoswho_vultures_20230920_new.xlsx", sheet = "periods_to_remove")
 
-movebank_raw_data_cleaned_2<-removeInvalidPeriods(movebank_raw_data_1,
+movebank_raw_data_2<-removeInvalidPeriods(movebank_raw_data_1,
                                                   periodsToRemove=periods_to_remove)
 
-dim(movebank_raw_data_cleaned_2)
+dim(movebank_raw_data_1)
+dim(movebank_raw_data_2)
 
 # Define the file path for saving the downloaded data
-file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_2.Rda"
+file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_2.Rda"
 
 # Save the data
-#save(movebank_raw_data_cleaned_2, file = file_path)
+#save(movebank_raw_data_2, file = file_path)
 
 # Load the .Rda file
-load(file_path)
+#load(file_path)
 
 
-# Step 5. Clean GPS Data-----------------------------------------------------------------
+
+# Step 6. Clean GPS Data-----------------------------------------------------------------
 
 #****************************************************
 # cleanData Helpers Functions - start
@@ -775,8 +771,8 @@ cleanData <- function(dataset,
            dplyr::ungroup())
 }
 
-# Clean and save movebank_raw_data_cleaned_2
-movebank_raw_data_cleaned_3 <- cleanData(movebank_raw_data_cleaned_2,
+# Clean and save movebank_raw_data_1
+movebank_raw_data_cleaned_3 <- cleanData(movebank_raw_data_2,
                                          gpsMaxTime = -1,
                                          precise = FALSE,
                                          longCol = "location_long",
@@ -786,124 +782,18 @@ movebank_raw_data_cleaned_3 <- cleanData(movebank_raw_data_cleaned_2,
                                          report = TRUE)
 
 #remove data set movebank_raw_data_1
-remove(movebank_raw_data_1)
+#remove(movebank_raw_data_1)
 
 #save
-file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_2.Rda"
+file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_3.Rda"
 
 # Save the data
-#save(movebank_raw_data_cleaned_2, file = file_path)
+#save(movebank_raw_data_cleaned_3, file = file_path)
 
 # Load the .Rda file
-load(file_path)
-
+#load(file_path)
 
 # Step 8. -----------------------------------------------------------------
-
-#' Remove Capture Cage periods
-#'
-#' This function takes in a dataset of vultures and removes data points which contain known times the individual was in a capture cage.
-#' Note that it is important that the roosts, captureSites, and AllCarmelDates is provided after being read in as a data.frame as it is necessary for this function to work.
-#' @param dataset A dataset
-#' @param captureSites A data frame of capture sites
-#' @param AllCarmelDates A data frame of dates containing captures in Carmel
-#' @param idCol Name of the column in the data containing individual IDs. Default is Nili_id. Used for getting roosts.
-#' @param start.day When combined with `start.month`, starting date of the capture period. Default is 1.
-#' @param start.month Starting month of the capture period. Default is August.
-#' @param end.day When combined with `end.month`, ending date of the capture period. Default is 30.
-#' @param end.month Ending month of the capture period. Default is November.
-#' @return A dataset with capture cage periods removed
-#' @export
-removeCaptures <- function(data, 
-                           captureSites, 
-                           AllCarmelDates, 
-                           distance = 500, 
-                           idCol = "Nili_id", 
-                           start.day = 1, 
-                           start.month = 8,
-                           end.day = 30, 
-                           end.month = 11){
-  # Identify the period of time during which the capture sites are open (when we need to do this exclusion)
-  # character string for reporting out the roosting period
-  period <- paste(start.day, format(ISOdate(2004,1:12,1),"%B")[start.month], "-", end.day, format(ISOdate(2004,1:12,1),"%B")[end.month], sep = " ")
-  
-  roosts <- get_roosts_df(data, id = "Nili_id")
-  
-  # Get roosts that fall in the capture period
-  sub.roosts <- roosts %>%
-    dplyr::mutate(start_date = lubridate::dmy(paste(start.day, start.month,
-                                                    lubridate::year(date), sep = "-")),
-                  end_date = lubridate::dmy(paste(end.day, end.month,
-                                                  lubridate::year(date), sep = "-"))) %>%
-    dplyr::filter(date >= start_date & date <= end_date)
-  
-  if(nrow(sub.roosts) > 0){
-    # Calculate the roost distance to each of the capture cages. If it is less than 500m, keep that line.
-    crds <- matrix(c(sub.roosts$location_long, sub.roosts$location_lat),
-                   nrow = nrow(sub.roosts), ncol = 2) # roost locs as simple lat/long coords
-    distanceMat <- matrix(ncol = nrow(captureSites),
-                          nrow = nrow(crds))
-    colnames(distanceMat) <-  unique(captureSites$name)
-    
-    for(i in 1:nrow(crds)){
-      distanceMat[i,] <- round(geosphere::distm(crds[i,],
-                                                captureSites[,c(3,2)]), 2)
-    }
-    closestCaptureSite <- colnames(distanceMat)[apply(distanceMat, 1, which.min)] # ID of closest capture site
-    closestCaptureDist <- apply(distanceMat, 1, min) # distance from closest capture site
-    
-    sub.roosts <- cbind(sub.roosts, closestCaptureSite, closestCaptureDist)
-    sub.roosts$captured <- ifelse(sub.roosts$closestCaptureDist <= distance, T, F)
-    sub.captured.dates <- sub.roosts %>%
-      dplyr::filter(captured) %>%
-      dplyr::select(Nili_id, date, closestCaptureSite,
-                    closestCaptureDist, captured)
-    
-    ## For Carmel--different protocol.
-    sub.captured.no.carmel <- subset(sub.captured.dates, closestCaptureSite != "Carmel")
-    sub.captured.carmel <- subset(sub.captured.dates, closestCaptureSite == "Carmel")
-    
-    AllCarmelDates$Date <- as.Date(AllCarmelDates$Date, format = "%d/%m/%Y")
-    
-    AllCarmelDates.1 <- data.frame(Date = as.Date(paste(AllCarmelDates$Date-1)))
-    AllCarmelDates.2 <- data.frame(Date = as.Date(paste(AllCarmelDates$Date-2)))
-    AllCarmelDates.3 <- data.frame(Date = as.Date(paste(AllCarmelDates$Date-3)))
-    
-    AllCarmelDates.all <- rbind(AllCarmelDates, AllCarmelDates.1, AllCarmelDates.2, AllCarmelDates.3)
-    
-    sub.captured.carmel <- sub.captured.carmel %>%
-      dplyr::mutate(known_capture = ifelse(date %in% AllCarmelDates.all$Date, 1, 0),
-                    captured = ifelse(known_capture == 1 & closestCaptureDist <= 50, T, F)) %>%
-      dplyr::filter(captured) %>%
-      dplyr::select(-c(known_capture))
-    
-    sub.captured.dates <- rbind(sub.captured.no.carmel, sub.captured.carmel)
-    
-    # We also need to exclude the day after the bird was captured
-    sub.captured.dates.1 <- sub.captured.dates
-    sub.captured.dates.1$date <- sub.captured.dates.1$date+1
-    
-    sub.captured.dates <- rbind(sub.captured.dates, sub.captured.dates.1)
-    sub.captured.dates <- sub.captured.dates %>%
-      dplyr::distinct(Nili_id, date, .keep_all = T)
-    
-    # It all looks ok, so we can subset the dataset to exclude the capture dates
-    removed_captures <- data %>%
-      dplyr::left_join(sub.captured.dates, by = c("Nili_id", "dateOnly" = "date"))
-    nrow(data) == nrow(removed_captures) # should be TRUE. NOW we can filter.
-    out <- removed_captures %>%
-      dplyr::filter(!captured |is.na(captured)) # remove the individual*days when they were captured
-  }else{
-    message(paste0("No roosts detected within the capture period: ", period, ". Did not remove any data."))
-    out <- data
-  }
-  
-  return(data)
-}
-
-cs <- read.csv("~/Documents/GitHub/Ergm_manuscript/data/raw_data/capture_sites.csv", sep = ",", header = T)
-cml <- read.csv("~/Documents/GitHub/Ergm_manuscript/data/raw_data/carmel.csv", sep = ",", header = T)
-
 
 #' Get roosts (data frame version)
 #'
@@ -1093,7 +983,111 @@ get_roosts_df <- function(df,
 }
 
 
-movebank_raw_data_cleaned_3<-removeCaptures(data = movebank_raw_data_cleaned_2, 
+#' Remove Capture Cage periods
+#'
+#' This function takes in a dataset of vultures and removes data points which contain known times the individual was in a capture cage.
+#' Note that it is important that the roosts, captureSites, and AllCarmelDates is provided after being read in as a data.frame as it is necessary for this function to work.
+#' @param dataset A dataset
+#' @param captureSites A data frame of capture sites
+#' @param AllCarmelDates A data frame of dates containing captures in Carmel
+#' @param idCol Name of the column in the data containing individual IDs. Default is Nili_id. Used for getting roosts.
+#' @param start.day When combined with `start.month`, starting date of the capture period. Default is 1.
+#' @param start.month Starting month of the capture period. Default is August.
+#' @param end.day When combined with `end.month`, ending date of the capture period. Default is 30.
+#' @param end.month Ending month of the capture period. Default is November.
+#' @return A dataset with capture cage periods removed
+#' @export
+removeCaptures <- function(data, 
+                           captureSites, 
+                           AllCarmelDates, 
+                           distance = 500, 
+                           idCol = "Nili_id", 
+                           start.day = 1, 
+                           start.month = 8,
+                           end.day = 30, 
+                           end.month = 11){
+  # Identify the period of time during which the capture sites are open (when we need to do this exclusion)
+  # character string for reporting out the roosting period
+  period <- paste(start.day, format(ISOdate(2004,1:12,1),"%B")[start.month], "-", end.day, format(ISOdate(2004,1:12,1),"%B")[end.month], sep = " ")
+  
+  roosts <- get_roosts_df(data, id = "Nili_id")
+  
+  # Get roosts that fall in the capture period
+  sub.roosts <- roosts %>%
+    dplyr::mutate(start_date = lubridate::dmy(paste(start.day, start.month,
+                                                    lubridate::year(date), sep = "-")),
+                  end_date = lubridate::dmy(paste(end.day, end.month,
+                                                  lubridate::year(date), sep = "-"))) %>%
+    dplyr::filter(date >= start_date & date <= end_date)
+  
+  if(nrow(sub.roosts) > 0){
+    # Calculate the roost distance to each of the capture cages. If it is less than 500m, keep that line.
+    crds <- matrix(c(sub.roosts$location_long, sub.roosts$location_lat),
+                   nrow = nrow(sub.roosts), ncol = 2) # roost locs as simple lat/long coords
+    distanceMat <- matrix(ncol = nrow(captureSites),
+                          nrow = nrow(crds))
+    colnames(distanceMat) <-  unique(captureSites$name)
+    
+    for(i in 1:nrow(crds)){
+      distanceMat[i,] <- round(geosphere::distm(crds[i,],
+                                                captureSites[,c(3,2)]), 2)
+    }
+    closestCaptureSite <- colnames(distanceMat)[apply(distanceMat, 1, which.min)] # ID of closest capture site
+    closestCaptureDist <- apply(distanceMat, 1, min) # distance from closest capture site
+    
+    sub.roosts <- cbind(sub.roosts, closestCaptureSite, closestCaptureDist)
+    sub.roosts$captured <- ifelse(sub.roosts$closestCaptureDist <= distance, T, F)
+    sub.captured.dates <- sub.roosts %>%
+      dplyr::filter(captured) %>%
+      dplyr::select(Nili_id, date, closestCaptureSite,
+                    closestCaptureDist, captured)
+    
+    ## For Carmel--different protocol.
+    sub.captured.no.carmel <- subset(sub.captured.dates, closestCaptureSite != "Carmel")
+    sub.captured.carmel <- subset(sub.captured.dates, closestCaptureSite == "Carmel")
+    
+    AllCarmelDates$Date <- as.Date(AllCarmelDates$Date, format = "%d/%m/%Y")
+    
+    AllCarmelDates.1 <- data.frame(Date = as.Date(paste(AllCarmelDates$Date-1)))
+    AllCarmelDates.2 <- data.frame(Date = as.Date(paste(AllCarmelDates$Date-2)))
+    AllCarmelDates.3 <- data.frame(Date = as.Date(paste(AllCarmelDates$Date-3)))
+    
+    AllCarmelDates.all <- rbind(AllCarmelDates, AllCarmelDates.1, AllCarmelDates.2, AllCarmelDates.3)
+    
+    sub.captured.carmel <- sub.captured.carmel %>%
+      dplyr::mutate(known_capture = ifelse(date %in% AllCarmelDates.all$Date, 1, 0),
+                    captured = ifelse(known_capture == 1 & closestCaptureDist <= 50, T, F)) %>%
+      dplyr::filter(captured) %>%
+      dplyr::select(-c(known_capture))
+    
+    sub.captured.dates <- rbind(sub.captured.no.carmel, sub.captured.carmel)
+    
+    # We also need to exclude the day after the bird was captured
+    sub.captured.dates.1 <- sub.captured.dates
+    sub.captured.dates.1$date <- sub.captured.dates.1$date+1
+    
+    sub.captured.dates <- rbind(sub.captured.dates, sub.captured.dates.1)
+    sub.captured.dates <- sub.captured.dates %>%
+      dplyr::distinct(Nili_id, date, .keep_all = T)
+    
+    # It all looks ok, so we can subset the dataset to exclude the capture dates
+    removed_captures <- data %>%
+      dplyr::left_join(sub.captured.dates, by = c("Nili_id", "dateOnly" = "date"))
+    nrow(data) == nrow(removed_captures) # should be TRUE. NOW we can filter.
+    out <- removed_captures %>%
+      dplyr::filter(!captured |is.na(captured)) # remove the individual*days when they were captured
+  }else{
+    message(paste0("No roosts detected within the capture period: ", period, ". Did not remove any data."))
+    out <- data
+  }
+  
+  return(data)
+}
+
+cs <- read.csv("~/Documents/GitHub/Ergm_manuscript/data/raw_data/capture_sites.csv", sep = ",", header = T)
+cml <- read.csv("~/Documents/GitHub/Ergm_manuscript/data/raw_data/carmel.csv", sep = ",", header = T)
+
+movebank_raw_data_cleaned_4<-removeCaptures(data = movebank_raw_data_cleaned_3, 
                                             captureSites = cs, 
                                             AllCarmelDates = cml, 
                                             distance = 500,
@@ -1103,21 +1097,19 @@ age_sex <- read_excel("~/Documents/GitHub/Ergm_manuscript/data/raw_data/whoswho_
   dplyr::select(Nili_id, birth_year, sex) %>%
   distinct()
 
-movebank_raw_data_cleaned_4 <- movebank_raw_data_cleaned_3 %>%
+movebank_raw_data_cleaned_4 <- movebank_raw_data_cleaned_4 %>%
   dplyr::select(-c("sex")) %>%
   left_join(age_sex, by = "Nili_id")
 
 
 # Define the file path for saving the downloaded data
-file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_7.Rda"
+file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_4.Rda"
 
 # Save the data
-#save(movebank_raw_data_cleaned_7, file = file_path)
+#save(movebank_raw_data_cleaned_4, file = file_path)
 
 # Load the .Rda file
-load(file_path)
-
-
+#load(file_path)
 
 # Step 6. In Mask Filter-----------------------------------------------------------------
 
@@ -1377,24 +1369,23 @@ gpsJamFilter <- function(dataset,
   dataset
 }
 
-movebank_raw_data_3_gpsJamFilter<-gpsJamFilter(movebank_raw_data_cleaned_2,
+movebank_raw_data_4_gpsJamFilter<-gpsJamFilter(movebank_raw_data_cleaned_4,
                                                mask,
                                                longCol = "location_long.1",
                                                latCol = "location_lat.1",
                                                idCol = "Nili_id")
 
 #so if any point was removed this df should have the same size. In the war period we should have data removed.
-dim(movebank_raw_data_cleaned_2)
-dim(movebank_raw_data_3_gpsJamFilter)
+dim(movebank_raw_data_4_gpsJamFilter)
 
 #save
-file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_3_gpsJamFilter.Rda"
+file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_4_gpsJamFilter.Rda"
 
 # Save the data
-#save(movebank_raw_data_3_gpsJamFilter, file = file_path)
+save(movebank_raw_data_4_gpsJamFilter, file = file_path)
 
 # Load the .Rda file
-load(file_path)
+#load(file_path)
 
 # Load the Israel boundary mask
 mask_Israel_boundary <- sf::st_read("~/Documents/GitHub/Ergm_manuscript/data/raw_data/CutOffRegion.kml")
@@ -1403,7 +1394,7 @@ mask_Israel_boundary <- sf::st_read("~/Documents/GitHub/Ergm_manuscript/data/raw
 
 # Filter the dataset to include only points within the mask, based on the inMaskThreshold.
 # Points falling outside the mask are optionally re-masked based on the threshold.
-movebank_raw_data_cleaned_4 <- inMaskFilter(dataset = movebank_raw_data_3_gpsJamFilter,
+movebank_raw_data_cleaned_5 <- inMaskFilter(dataset = movebank_raw_data_4_gpsJamFilter,
                                             mask = mask_Israel_boundary,
                                             inMaskThreshold = 0.33,
                                             crs = "WGS84",
@@ -1415,17 +1406,17 @@ movebank_raw_data_cleaned_4 <- inMaskFilter(dataset = movebank_raw_data_3_gpsJam
                                             quiet = TRUE)
 
 # Display the dimensions of the filtered dataset
-dim(movebank_raw_data_3_gpsJamFilter)
-dim(movebank_raw_data_cleaned_4)
+dim(movebank_raw_data_4_gpsJamFilter)
+dim(movebank_raw_data_cleaned_5)
 
 # Define the file path for saving the downloaded data
-file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_4.Rda"
+file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_5.Rda"
 
 # Save the data
-#save(movebank_raw_data_cleaned_4, file = file_path)
+save(movebank_raw_data_cleaned_5, file = file_path)
 
 # Load the .Rda file
-load(file_path)
+#load(file_path)
 
 
 #check the data
@@ -1474,40 +1465,145 @@ ggsave(
 )
 
 
+# Step 7. -----------------------------------------------------------------
+
+# Fix time zone so dates make sense ---------------------------------------
+## Overwrite the dateOnly column from the new times
+data_masked <- movebank_raw_data_cleaned_5 %>%
+  mutate(timestampIsrael = lubridate::with_tz(timestamp, tzone = "Israel"),
+         dateOnly = lubridate::date(timestampIsrael),
+         month = lubridate::month(dateOnly),
+         year = lubridate::year(dateOnly))
+
+
+# Step 7. -----------------------------------------------------------------
+
+# Convert exact_date_of_birth to Date format, handling empty strings
+movebank_negev_masked <- data_masked %>%
+  mutate(exact_date_of_birth = ymd_hms(exact_date_of_birth, quiet = TRUE),
+         year_of_birth = year(exact_date_of_birth))
+
+# Split into 3 seasons 
+split_seasons <- movebank_negev_masked %>% mutate(month = lubridate::month(timestampIsrael),
+                                                         day = lubridate::day(timestampIsrael),
+                                                         year = lubridate::year(timestampIsrael)) %>%
+  mutate(season = case_when(((month == 12 & day >= 15) | 
+                               (month %in% 1:4) | 
+                               (month == 5 & day < 15)) ~ "breeding",
+                            ((month == 5 & day >= 15) | 
+                               (month %in% 6:8) | 
+                               (month == 9 & day < 15)) ~ "post_breeding",#summer
+                            .default = "pre_breeding")) %>%#fall
+  mutate(seasonUnique = case_when(season == "breeding" & month == 12 ~
+                                    paste(as.character(year + 1), season, sep = "_"),
+                                  .default = paste(as.character(year), season, sep = "_"))) %>%
+  mutate(seasonUnique = factor(seasonUnique, levels = c("2020_post_breeding", 
+                                                        "2020_pre_breeding", 
+                                                        "2021_breeding", 
+                                                        "2021_post_breeding", 
+                                                        "2021_pre_breeding", 
+                                                        "2022_breeding", 
+                                                        "2022_post_breeding",
+                                                        "2022_pre_breeding",
+                                                        "2023_breeding", 
+                                                        "2023_post_breeding",
+                                                        "2023_pre_breeding", 
+                                                        "2024_breeding", 
+                                                        "2024_post_breeding")),
+         
+         season = factor(season, levels = c("breeding", "post_breeding", "pre_breeding")))
+
+# Add ages (based on season, which is why this goes here rather than above)
+split_seasons <- split_seasons %>%
+  mutate(age = year - year_of_birth) %>%
+  mutate(age = ifelse(season == "breeding" & month %in% c(1, 12), age + 1, age)) %>%
+  group_by(Nili_id, year, month) %>%
+  mutate(age = ifelse(month == 2, min(age) + 1, age)) %>%
+  mutate(age_group = case_when(age <= 1 ~ "Immature",
+                               age > 1 & age < 5 ~ "Subadult",
+                               age >= 5 ~ "Adult",
+                               .default = NA)) %>%
+  ungroup()
+
+
+# Separate the seasons -----------------------------
+seasons_list_6 <- split_seasons %>%
+  group_by(seasonUnique) %>%
+  group_split(.keep = T)
+
+
+# Define the file path for saving the downloaded data
+file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/seasons_list_6.Rda"
+
+# Save the data
+save(seasons_list_6, file = file_path)
+
+# Load the .Rda file
+#load(file_path)
+
 # Step 9. -----------------------------------------------------------------
 
 # Restrict to southern individuals ----------------------------------------
 # Based on previous investigations for the 2022 breeding and non-breeding seasons, have found that a good cutoff for southern vs. non-southern is 3550000 (in ITM)
 ## Transform to SF object, so we can get centroids
-sf <- movebank_raw_data_cleaned_7 %>%
-  sf::st_as_sf(coords = c("location_long.1","location_lat.1"), remove = F) %>%
-  sf::st_set_crs("WGS84") %>%
-  sf::st_transform(32636)
+
+season_names <- map_chr(seasons_list_6, ~as.character(.x$seasonUnique[1]))
+
+seasons_sf <- map(seasons_list_6, ~.x %>%
+                    sf::st_as_sf(coords = c("location_long", "location_lat"), 
+                                 remove = F) %>%
+                    sf::st_set_crs("WGS84") %>%
+                    sf::st_transform(32636))
+
 
 ## Get centroids, so we can see who's "southern" for that season.
-centroids <- sf %>% group_by(Nili_id) %>%
-  summarize(geometry = st_union(geometry)) %>%
-  st_centroid()
+centroids <- map(seasons_sf, ~.x %>%
+                   group_by(Nili_id) %>%
+                   summarize(geometry = st_union(geometry)) %>%
+                   st_centroid())
 
-## Examine a histogram of centroid latitudes
-hist(st_coordinates(centroids[,2])) # looks like 3550000 is generally a good cutoff point here
+## Examine a histogram of centroid latitudes 
+hist(st_coordinates(centroids[[1]][,2])) # looks like 3550000 is generally a good cutoff point here
 
 ## Get southern individuals for each season, so we can filter the data
-southernIndividuals <- centroids %>%
-  filter(st_coordinates(.)[,2] <= 3550000) %>% #06/13/2023 -I changed here to 350000 to select exclusively the individuals from negev# you will probably have to add a second filter here to remove the ones that are too far to the south, as we talked about.
-  pull(Nili_id)
+southern_indivs <- map(centroids, ~.x %>%
+                         filter(st_coordinates(.)[,2] <= 3550000) %>%
+                         pull(Nili_id))
 
-## Remove individuals from the dataset that are not in the south. Note that even if a "southern individual" has some points that are not in the south, the individual will still be kept and the points will also be kept.
-movebank_raw_data_cleaned_8<- sf %>% filter(Nili_id %in% southernIndividuals)
+## Remove individuals not in the south
+removed_northern <- map2(.x = seasons_list, 
+                         .y = southern_indivs, ~.x 
+                         %>% filter(Nili_id %in% .y))
 
-# Define the file path for saving the downloaded data
-file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_8.Rda"
 
-# Save the data
-save(movebank_raw_data_cleaned_8, file = file_path)
-
-load(file_path)
-
+remove_lfr <- function(removed_northern){
+  Mode <- function(x) { 
+    ux <- unique(x)
+    ux[which.max(tabulate(match(x, ux)))]
+  }
+  
+  # Calculate daily modes and add them to the dataset (using the function defined above)
+  with_modes <- map(removed_northern, ~.x %>%
+                      group_by(dateOnly, Nili_id) %>%
+                      mutate(diff = as.numeric(difftime(lead(timestamp), timestamp, units = "mins"))) %>%
+                      group_by(dateOnly, Nili_id) %>%
+                      mutate(mode = Mode(round(diff))) %>%
+                      ungroup())
+  
+  # Identify individuals that never have a daily mode of 10 minutes
+  low_fix_rate_indivs <- map(with_modes, ~.x %>%
+                               sf::st_drop_geometry() %>%
+                               group_by(Nili_id) %>%
+                               summarize(minmode = min(mode, na.rm = T)) %>%
+                               filter(minmode > 10) %>%
+                               pull(Nili_id) %>%
+                               unique())
+  
+  # Don't need to save with_modes because we've already used this step to identify low fix rate individuals.
+  removed_lfr <- map2(removed_northern, low_fix_rate_indivs,                     
+                      ~.x %>% filter(!(Nili_id %in% .y)))
+  return(removed_lfr)
+}
 
 # Plot the points with ggplot2
 vulture_plot_2<-ggplot(data = movebank_raw_data_cleaned_8) +
@@ -1529,144 +1625,17 @@ ggsave(filename = "~/Documents/GitHub/Ergm_manuscript/figures/Vulture_GPS_Points
   height = 8,          # Set height (in inches)
   dpi = 300)            # Set resolution (recommended for high quality))
 
-dim(movebank_raw_data_cleaned_2)
-dim(movebank_raw_data_cleaned_3)
-dim(movebank_raw_data_cleaned_4)
-dim(movebank_raw_data_cleaned_5)
-dim(movebank_raw_data_cleaned_6)
-dim(movebank_raw_data_cleaned_7)
-dim(movebank_raw_data_cleaned_8)
 
-# Define the file path for load the data
-file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_8.Rda"
-
-load(file_path)
-
-# Separate the seasons -----------------------------
-
-# Fix time zone so dates make sense ---------------------------------------
-## Overwrite the dateOnly column from the new times #data_masked
-movebank_raw_data_cleaned_9<- movebank_raw_data_cleaned_8 %>%
-  mutate(timestampIsrael = lubridate::with_tz(timestamp, tzone = "Israel"),
-         dateOnly = lubridate::date(timestampIsrael),
-         month = lubridate::month(dateOnly),
-         year = lubridate::year(dateOnly))
+remove_lfr_vu<-remove_lfr(removed_northern)
 
 # Define the file path for saving the downloaded data
-file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_9.Rda"
+file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/remove_lfr_vu.Rda"
 
 # Save the data
-#save(movebank_raw_data_cleaned_9, file = file_path)
-
-load(file_path)
-
-
-# Step 7. -----------------------------------------------------------------
-
-# Split into 3 seasons 
-split_seasons <- movebank_raw_data_cleaned_9 %>% mutate(month = lubridate::month(timestampIsrael),
-                                                         day = lubridate::day(timestampIsrael),
-                                                         year = lubridate::year(timestampIsrael)) %>%
-    mutate(season = case_when(((month == 12 & day >= 15) | 
-                                 (month %in% 1:4) | 
-                                 (month == 5 & day < 15)) ~ "breeding",
-                              ((month == 5 & day >= 15) | 
-                                 (month %in% 6:8) | 
-                                 (month == 9 & day < 15)) ~ "post_breeding",#summer
-                              .default = "pre_breeding")) %>%#fall
-    mutate(seasonUnique = case_when(season == "breeding" & month == 12 ~
-                                      paste(as.character(year + 1), season, sep = "_"),
-                                    .default = paste(as.character(year), season, sep = "_"))) %>%
-    mutate(seasonUnique = factor(seasonUnique, levels = c("2020_post_breeding", 
-                                                          "2020_pre_breeding", 
-                                                          "2021_breeding", 
-                                                          "2021_post_breeding", 
-                                                          "2021_pre_breeding", 
-                                                          "2022_breeding", 
-                                                          "2022_post_breeding",
-                                                          "2022_pre_breeding",
-                                                          "2023_breeding", 
-                                                          "2023_post_breeding",
-                                                          "2023_pre_breeding", 
-                                                          "2024_breeding", 
-                                                          "2024_post_breeding")),
-           
-           season = factor(season, levels = c("breeding", "post_breeding", "pre_breeding")))
-  
-  # Add ages (based on season, which is why this goes here rather than above)
-split_seasons <- split_seasons %>%
-    mutate(age = year - year_of_birth) %>%
-    mutate(age = ifelse(season == "breeding" & month %in% c(1, 12), age + 1, age)) %>%
-    group_by(Nili_id, year, month) %>%
-    mutate(age = ifelse(month == 2, min(age) + 1, age)) %>%
-    mutate(age_group = case_when(age <= 1 ~ "Immature",
-                                 age > 1 & age < 5 ~ "Subadult",
-                                 age >= 5 ~ "Adult",
-                                 .default = NA)) %>%
-    ungroup()
-  
-  
-# Separate the seasons -----------------------------
-movebank_raw_data_cleaned_10 <- split_seasons %>%
-    group_by(seasonUnique) %>%
-    group_split(.keep = T)
-
-
-# Convert exact_date_of_birth to Date format, handling empty strings
-movebank_raw_data_cleaned_9 <- movebank_raw_data_cleaned_10 %>%
-  mutate(exact_date_of_birth = ymd_hms(exact_date_of_birth, quiet = TRUE),
-         year_of_birth = year(exact_date_of_birth))
-
-
-# Define the file path for saving the downloaded data
-file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_11.Rda"
-
-# Save the data
-save(movebank_raw_data_cleaned_11, file = file_path)
+save(remove_lfr_vu, file = file_path)
 
 # Load the .Rda file
-load(file_path)
-
-#remove the individuals with few days
-remove_lfr <- function(data){
-  Mode <- function(x) { 
-    ux <- unique(x)
-    ux[which.max(tabulate(match(x, ux)))]
-  }
-  
-  # Calculate daily modes and add them to the dataset (using the function defined above)
-  with_modes <- map(data, ~.x %>%
-                      group_by(dateOnly, Nili_id) %>%
-                      mutate(diff = as.numeric(difftime(lead(timestamp), timestamp, units = "mins"))) %>%
-                      group_by(dateOnly, Nili_id) %>%
-                      mutate(mode = Mode(round(diff))) %>%
-                      ungroup())
-  
-  # Identify individuals that never have a daily mode of 10 minutes
-  low_fix_rate_indivs <- map(with_modes, ~.x %>%
-                               sf::st_drop_geometry() %>%
-                               group_by(Nili_id) %>%
-                               summarize(minmode = min(mode, na.rm = T)) %>%
-                               filter(minmode > 10) %>%
-                               pull(Nili_id) %>%
-                               unique())
-  
-  # Don't need to save with_modes because we've already used this step to identify low fix rate individuals.
-  removed_lfr <- map2(data, low_fix_rate_indivs,                     
-                      ~.x %>% filter(!(Nili_id %in% .y)))
-  return(removed_lfr)
-}
-
-movebank_raw_data_cleaned_12<-remove_lfr(movebank_raw_data_cleaned_11)
-
-# Define the file path for saving the downloaded data
-file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_12.Rda"
-
-# Save the data
-#save(movebank_raw_data_cleaned_12, file = file_path)
-
-# Load the .Rda file
-load(file_path)
+#load(file_path)
 
 downsample_10min <- function(data){
   # Define function for downsampling 
@@ -1693,29 +1662,29 @@ downsample_10min <- function(data){
 }
 
 
-movebank_raw_data_cleaned_13_TenMin <- downsample_10min(movebank_raw_data_cleaned_12)
+movebank_cleaned_data_7_TenMin<- downsample_10min(remove_lfr_vu)
 
-dim(movebank_raw_data_cleaned_13_TenMin[[1]])
-dim(movebank_raw_data_cleaned_13_TenMin[[2]])
-dim(movebank_raw_data_cleaned_13_TenMin[[3]])
-dim(movebank_raw_data_cleaned_13_TenMin[[4]])
-dim(movebank_raw_data_cleaned_13_TenMin[[5]])
-dim(movebank_raw_data_cleaned_13_TenMin[[6]])
-dim(movebank_raw_data_cleaned_13_TenMin[[7]])
-dim(movebank_raw_data_cleaned_13_TenMin[[8]])
-dim(movebank_raw_data_cleaned_13_TenMin[[9]])
-dim(movebank_raw_data_cleaned_13_TenMin[[10]])
-dim(movebank_raw_data_cleaned_13_TenMin[[11]])
-dim(movebank_raw_data_cleaned_13_TenMin[[12]])
+dim(movebank_cleaned_data_7_TenMin[[1]])
+dim(movebank_cleaned_data_7_TenMin[[2]])
+dim(movebank_cleaned_data_7_TenMin[[3]])
+dim(movebank_cleaned_data_7_TenMin[[4]])
+dim(movebank_cleaned_data_7_TenMin[[5]])
+dim(movebank_cleaned_data_7_TenMin[[6]])
+dim(movebank_cleaned_data_7_TenMin[[7]])
+dim(movebank_cleaned_data_7_TenMin[[8]])
+dim(movebank_cleaned_data_7_TenMin[[9]])
+dim(movebank_cleaned_data_7_TenMin[[10]])
+dim(movebank_cleaned_data_7_TenMin[[11]])
+dim(movebank_cleaned_data_7_TenMin[[12]])
 
 # Define the file path for saving the downloaded data
-file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_13_TenMin.Rda"
+file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_cleaned_data_7_TenMin.Rda"
 
 # Save the data
-#save(movebank_raw_data_cleaned_13_TenMin, file = file_path)
+save(movebank_cleaned_data_7_TenMin, file = file_path)
 
 # Load the .Rda file
-load(file_path)
+#load(file_path)
 
 
 remove_too_few_days <- function(removed_lowppd){
@@ -1734,31 +1703,31 @@ remove_too_few_days <- function(removed_lowppd){
   return(removed_too_few_days)
 }
 
-movebank_raw_data_cleaned_final_14<-remove_too_few_days(movebank_raw_data_cleaned_13_TenMin)
+movebank_cleaned_data_7_TenMin<-remove_too_few_days(movebank_cleaned_data_7_TenMin)
 
-dim(movebank_raw_data_cleaned_final_14[[1]])
-dim(movebank_raw_data_cleaned_final_14[[2]])
-dim(movebank_raw_data_cleaned_final_14[[3]])
-dim(movebank_raw_data_cleaned_final_14[[4]])
-dim(movebank_raw_data_cleaned_final_14[[5]])
-dim(movebank_raw_data_cleaned_final_14[[6]])
-dim(movebank_raw_data_cleaned_final_14[[7]])
-dim(movebank_raw_data_cleaned_final_14[[8]])
-dim(movebank_raw_data_cleaned_final_14[[9]])
-dim(movebank_raw_data_cleaned_final_14[[10]])
-dim(movebank_raw_data_cleaned_final_14[[11]])
-dim(movebank_raw_data_cleaned_final_14[[12]])
+dim(movebank_cleaned_data_7_TenMin[[1]])
+dim(movebank_cleaned_data_7_TenMin[[2]])
+dim(movebank_cleaned_data_7_TenMin[[3]])
+dim(movebank_cleaned_data_7_TenMin[[4]])
+dim(movebank_cleaned_data_7_TenMin[[5]])
+dim(movebank_cleaned_data_7_TenMin[[6]])
+dim(movebank_cleaned_data_7_TenMin[[7]])
+dim(movebank_cleaned_data_7_TenMin[[8]])
+dim(movebank_cleaned_data_7_TenMin[[9]])
+dim(movebank_cleaned_data_7_TenMin[[10]])
+dim(movebank_cleaned_data_7_TenMin[[11]])
+dim(movebank_cleaned_data_7_TenMin[[12]])
 
 # Define the file path for saving the downloaded data
-file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_final_14.Rda"
+file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_cleaned_data_7_TenMin.Rda"
 
 # Save the data
-#save(movebank_raw_data_cleaned_final_14, file = file_path)
+#save(movebank_cleaned_data_7_TenMin, file = file_path)
 
 # Load the .Rda file
-load(file_path)
+#load(file_path)
 
-movebank_cleaned_data_2020_2024<-movebank_raw_data_cleaned_final_14
+movebank_cleaned_data_2020_2024<-movebank_cleaned_data_7_TenMin
 
 pre_breeding_2020<-movebank_cleaned_data_2020_2024[[1]]
 breeding_2021<-movebank_cleaned_data_2020_2024[[2]]
@@ -1794,29 +1763,14 @@ save(breeding_2024, file = "~/Documents/GitHub/Ergm_manuscript/data/raw_data/bre
 save(post_breeding_2024, file = "~/Documents/GitHub/Ergm_manuscript/data/raw_data/post_breeding_2024.Rda")
 
 
+
+
+
+
+
 #Now we we need to do the same cuts for the roost data.
 
 load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/movebank_raw_data_cleaned_10.Rda")
-
-#####################
-# load files
-# Load each dataset individually
-load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/pre_breeding_2020.Rda")
-load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/breeding_2021.Rda")
-load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/post_breeding_2021.Rda")
-
-load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/pre_breeding_2021.Rda")
-load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/breeding_2022.Rda")
-load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/post_breeding_2022.Rda")
-
-load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/pre_breeding_2022.Rda")
-load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/breeding_2023.Rda")
-load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/post_breeding_2023.Rda")
-
-load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/pre_breeding_2023.Rda")
-load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/breeding_2024.Rda")
-load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/post_breeding_2024.Rda")
-
 
 #' Get roosts (data frame version)
 #'
@@ -1844,18 +1798,7 @@ load("~/Documents/GitHub/Ergm_manuscript/data/raw_data/post_breeding_2024.Rda")
 #' @param quiet If F (default), prints time warning/progress message. If T, silences this message.
 #' @return a data frame of the calculated roosts for every animal.
 #' @export
-get_roosts_df <- function(df,
-                          id = "Nili_id", 
-                          timestamp = "timestamp", 
-                          x = "location_long", 
-                          y = "location_lat", 
-                          ground_speed = "ground_speed", 
-                          speed_units = "m/s", 
-                          buffer = 1,
-                          twilight = 61, 
-                          morning_hours = c(0:12), 
-                          night_hours = c(13:23), 
-                          quiet = F){
+get_roosts_df <- function(df, id = "local_identifier", timestamp = "timestamp", x = "location_long", y = "location_lat", ground_speed = "ground_speed", speed_units = "m/s", buffer = 1, twilight = 61, morning_hours = c(0:12), night_hours = c(13:23), quiet = F){
   # setup for time warning
   if(!quiet){
     cat("\nFinding roosts... this may take a while if your dataset is large.\n")
@@ -2012,7 +1955,7 @@ roosts <- map(dat, get_roosts_df(df = .x, id = "Nili_id"),
             return(roosts)
 }
 
-get_roosts_split_seasons_11 <- get_roosts(pre_breeding_2020)
+get_roosts_split_seasons_11 <- get_roosts(movebank_cleaned_data_7_TenMin)
 
 save(get_roosts_movebank_cleaned_10, file = "get_roosts_movebank_cleaned_10.Rda")
 
@@ -2142,7 +2085,7 @@ file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/remove_lfr_vu_11.
 # Save the data
 #save(remove_lfr_vu_11, file = file_path)
 
-load(file_path)
+#load(file_path)
 
 downsample_10min <- function(data){
     # Define function for downsampling 
@@ -2177,7 +2120,7 @@ file_path <- "~/Documents/GitHub/Ergm_manuscript/data/raw_data/downsample_10min_
 #save(downsample_10min_movebank_data_12, file = file_path)
 
 # Load the .Rda file
-load(file_path)
+#load(file_path)
 
 # Assuming the loaded object is named `data` and contains the 12 lists
 # Ensure the directory exists to save the seasons data
@@ -2198,7 +2141,7 @@ for (i in 1:12) {
 #just load all the seasons
 for (i in 1:12) {
   file_path <- paste0("~/Documents/GitHub/Ergm_manuscript/data/raw_data/season_", i, ".Rda")
-  load(file_path)
+  #load(file_path)
 }
 
 dim(season_1)
